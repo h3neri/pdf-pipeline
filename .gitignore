@@ -1,0 +1,10 @@
+# Ambiente virtual
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# PDFs de entrada e imagens geradas (pesados)
+*.pdf
+pdf_to_image/imagens/
