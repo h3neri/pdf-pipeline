@@ -1,0 +1,6 @@
+# Dependências do projeto (instaladas por setup.sh / setup.bat)
+pymupdf
+httpx
+rapidfuzz
+# Opcional: pausa automática por temperatura da GPU (só na máquina com GPU NVIDIA)
+# nvidia-ml-py

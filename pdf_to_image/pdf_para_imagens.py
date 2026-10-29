@@ -10,7 +10,7 @@ Exemplos:
   python pdf_para_imagens.py doc.pdf --processos 4         # paralelo (um processo por bloco)
 
 Se for interrompido, rode de novo: páginas já salvas são puladas.
-Dependência: pip install pymupdf
+Dependência: pymupdf (instale com ./setup.sh na raiz do projeto; veja o README)
 """
 import argparse
 import sys

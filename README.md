@@ -7,13 +7,46 @@ interrompida e retomada, e todo texto fica rastreável até `documento:página:f
 triagem → (amostra + gabarito) → vlm → validar / revisar → exportar
 ```
 
-## Instalação
+## Instalação (passo a passo)
+
+Requisito: **Python 3.9 ou mais novo** (`python3 --version`). Em Ubuntu/Debian, se faltar o módulo
+venv: `sudo apt install python3-venv`.
+
+1. Baixe o projeto e entre na pasta:
+   ```bash
+   git clone <url-do-repositorio> pdf-pipeline
+   cd pdf-pipeline
+   ```
+2. Rode o setup (cria a pasta `.venv` e instala as dependências de `requirements.txt`):
+   - Linux / macOS: `./setup.sh`
+   - Windows: `setup.bat`
+3. Use o Python do ambiente virtual — **não** o `python` do sistema, que não tem os pacotes:
+   ```bash
+   .venv/bin/python pdf_pipeline.py -h              # Windows: .venv\Scripts\python
+   ```
+   Ou ative o ambiente uma vez por terminal e use `python` normalmente (o prompt mostra `(.venv)`):
+   ```bash
+   source .venv/bin/activate                        # Windows: .venv\Scripts\activate
+   python pdf_pipeline.py -h
+   deactivate                                       # para sair
+   ```
+
+> Erro `externally-managed-environment` ao usar `pip install` direto? É o Ubuntu protegendo o Python
+> do sistema. Não use `--break-system-packages`; use o `setup.sh` acima.
+>
+> Erro `No module named 'pymupdf'`? Você rodou o `python` do sistema. Use `.venv/bin/python` ou ative o ambiente.
+
+Opcional, na máquina com GPU NVIDIA (pausa automática por temperatura): `.venv/bin/pip install nvidia-ml-py`.
+
+## Converter PDFs em imagens
 
 ```bash
-python -m venv .venv && source .venv/bin/activate      # Python >= 3.9 (testado em 3.10 e 3.13)
-pip install pymupdf httpx rapidfuzz
-pip install nvidia-ml-py      # opcional: pausa automática por temperatura da GPU
+.venv/bin/python pdf_to_image/pdf_para_imagens.py meu.pdf                       # todas as páginas
+.venv/bin/python pdf_to_image/pdf_para_imagens.py pasta_de_pdfs/ --processos 4  # pasta inteira, em paralelo
+.venv/bin/python pdf_to_image/pdf_para_imagens.py meu.pdf --paginas 1-10,25 --formato jpg --cinza
 ```
+As imagens vão para `imagens/<nome-do-pdf>/p00001.png, ...` (muda com `--saida`). Se interromper,
+rode de novo: páginas já salvas são puladas. Veja todas as opções com `-h`.
 
 O servidor do modelo (vLLM / llama.cpp / Ollama) roda à parte; o script só fala HTTP com ele.
 

@@ -28,7 +28,7 @@ Fluxo típico:
   python pdf_pipeline.py validar --hip vlm:<modelo>
   python pdf_pipeline.py exportar --saida corpus/
 
-Dependências: pip install pymupdf httpx rapidfuzz     (opcional: nvidia-ml-py)
+Dependências: veja requirements.txt (instale com ./setup.sh; opcional: nvidia-ml-py)
 """
 from __future__ import annotations
 
