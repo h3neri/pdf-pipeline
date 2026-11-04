@@ -7,4 +7,16 @@ __pycache__/
 
 # PDFs de entrada e imagens geradas (pesados)
 *.pdf
-pdf_to_image/imagens/
+imagens/
+
+# Dados gerados pelo pipeline: têm o texto dos documentos (nunca versionar)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.jsonl
+amostra/
+corpus/
+corpus_teste/
+revisao_*.html
+validacao_*.csv
+teste.gabarito.json

@@ -16,6 +16,7 @@ Subcomandos (rode cada um com -h para ver as opções):
             como mais uma "fonte" de texto por página.
   validar   Compara uma fonte com uma referência (texto nativo ou gabarito):
             omissões, alucinações, números, CER/WER, laços de repetição, idioma.
+  comparar  Junta numa tabela só a validação de várias fontes (escolha do modelo).
   revisar   Gera um HTML lado a lado (imagem da página x diferença de texto).
   exportar  Escolhe a melhor fonte por página, limpa (xxxx, ____, cabeçalho e
             rodapé repetidos, hifenização), confere se nenhuma página faltou e
@@ -1212,6 +1213,72 @@ def cmd_validar(a) -> int:
     return 0
 
 
+def cmd_comparar(a) -> int:
+    """Uma tabela só com a validação de todas as fontes contra a mesma referência (escolha do modelo).
+
+    Lê o que o `validar` já gravou na tabela `validacao`; não recalcula nada. Ordena pela
+    precisão no pior caso (p5), porque texto inventado entrando na whitelist é o erro mais caro.
+    """
+    con = abrir_db(a.db)
+    cats = None if a.categorias == "todas" else set(a.categorias.split(","))
+    por_hip = defaultdict(list)
+    for r in con.execute("SELECT hip, doc_id, pagina, categoria, metricas, sinais FROM validacao WHERE ref=?",
+                         (a.ref,)):
+        if cats is None or r["categoria"] in cats:
+            por_hip[r["hip"]].append(r)
+    if not por_hip:
+        log(f"Nada validado contra '{a.ref}' nas categorias {a.categorias}. "
+            f"Rode antes: validar --hip <fonte> --ref {a.ref}")
+        return 1
+    # tempo por página gravado pelo `vlm` (latência sob a --concorrencia usada; só existe em fontes vlm:)
+    segundos = defaultdict(dict)
+    for r in con.execute("SELECT doc_id, pagina, fonte, meta FROM saidas WHERE meta IS NOT NULL"):
+        s = json.loads(r["meta"]).get("segundos")
+        if s is not None:
+            segundos[r["fonte"]][(r["doc_id"], r["pagina"])] = s
+
+    linhas = []
+    for hip, rows in por_hip.items():
+        ms = [json.loads(r["metricas"]) for r in rows]
+        sinais = [json.loads(r["sinais"]) for r in rows]
+        rec, pre = [m["recall"] for m in ms], [m["precisao"] for m in ms]
+        segs = [segundos[hip][(r["doc_id"], r["pagina"])] for r in rows
+                if (r["doc_id"], r["pagina"]) in segundos[hip]]
+        linhas.append({
+            "fonte": hip, "paginas": len(rows),
+            "recall_med": statistics.median(rec), "recall_p5": _q(rec, .05),
+            "precisao_med": statistics.median(pre), "precisao_p5": _q(pre, .05),
+            "cer_med": statistics.median(m["cer"] for m in ms),
+            "nums_errados": sum(m["nums_faltando"] + m["nums_extras"] for m in ms),
+            "pags_num_errado": sum(1 for m in ms if m["nums_faltando"] or m["nums_extras"]),
+            "pct_sinalizadas": 100 * sum(1 for s in sinais if s) / len(rows),
+            "seg_pag_med": statistics.median(segs) if segs else None,
+            "_chaves": frozenset((r["doc_id"], r["pagina"]) for r in rows),
+        })
+    linhas.sort(key=lambda x: (-x["precisao_p5"], -x["recall_p5"], x["fonte"]))
+
+    larg = max(10, *(len(x["fonte"]) for x in linhas))
+    print(f"\nComparação contra '{a.ref}' (categorias: {a.categorias}), da melhor para a pior precisão p5")
+    print(f"  {'fonte':<{larg}} {'págs':>5}  {'recall':>7} {'p5':>6}  {'precisão':>8} {'p5':>6}  "
+          f"{'CER':>6}  {'nºs errados':>11}  {'sinal.':>6}  {'s/pág':>6}")
+    for x in linhas:
+        seg = f"{x['seg_pag_med']:.1f}" if x["seg_pag_med"] is not None else "-"
+        print(f"  {x['fonte']:<{larg}} {x['paginas']:>5}  {x['recall_med']:>7.3f} {x['recall_p5']:>6.3f}  "
+              f"{x['precisao_med']:>8.3f} {x['precisao_p5']:>6.3f}  {x['cer_med']:>6.3f}  "
+              f"{x['nums_errados']:>4} em {x['pags_num_errado']:>3}  {x['pct_sinalizadas']:>5.1f}%  {seg:>6}")
+    if len({x["_chaves"] for x in linhas}) > 1:  # comparação justa exige as mesmas páginas para todos
+        print("  ATENÇÃO: as fontes não cobrem as mesmas páginas; revalide todas com o mesmo gabarito.")
+    print("  nºs errados = números faltando + sobrando (total em N páginas); s/pág = mediana de latência.\n")
+    if a.saida:
+        with open(a.saida, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.DictWriter(f, fieldnames=[k for k in linhas[0] if not k.startswith("_")],
+                               extrasaction="ignore")
+            w.writeheader()
+            w.writerows(linhas)
+        print(f"  Tabela gravada em {a.saida}\n")
+    return 0
+
+
 # ================================================================ 6. REVISAR
 def diff_html(a: str, b: str) -> str:
     """Diferença palavra a palavra (linhas em branco não contam como diferença)."""
@@ -1497,6 +1564,12 @@ def main(argv=None) -> int:
                     help="só acusa omissão/adição se faltarem/sobrarem ao menos N palavras")
     va.add_argument("--saida", help="CSV por página")
 
+    co = sub.add_parser("comparar", help="tabela única com a validação de várias fontes (escolha do modelo)")
+    co.add_argument("--ref", default="gabarito", help="referência usada no validar (padrão: %(default)s)")
+    co.add_argument("--categorias", default="vlm,misto",
+                    help="categorias consideradas, separadas por vírgula, ou 'todas' (padrão: %(default)s)")
+    co.add_argument("--saida", help="grava a tabela também em CSV")
+
     r = sub.add_parser("revisar", help="HTML lado a lado para revisão humana")
     r.add_argument("--hip", required=True)
     r.add_argument("--ref", default="nativo")
@@ -1518,7 +1591,7 @@ def main(argv=None) -> int:
 
     a = ap.parse_args(argv)
     return {"triagem": cmd_triagem, "amostra": cmd_amostra, "vlm": cmd_vlm, "importar": cmd_importar,
-            "validar": cmd_validar, "revisar": cmd_revisar, "exportar": cmd_exportar,
+            "validar": cmd_validar, "comparar": cmd_comparar, "revisar": cmd_revisar, "exportar": cmd_exportar,
             "status": cmd_status}[a.cmd](a)
 
 

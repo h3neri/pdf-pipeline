@@ -38,6 +38,15 @@ venv: `sudo apt install python3-venv`.
 
 Opcional, na máquina com GPU NVIDIA (pausa automática por temperatura): `.venv/bin/pip install nvidia-ml-py`.
 
+**O vLLM vai num ambiente separado.** Ele fixa versões próprias de PyTorch e CUDA; instalado no `.venv` do
+pipeline, pode quebrar o `pymupdf` ou ser quebrado por ele. Como o pipeline só fala HTTP com o servidor, os
+dois não precisam dividir o ambiente:
+```bash
+python3 -m venv ~/venv-vllm
+~/venv-vllm/bin/pip install -U vllm      # o Gemma 4 12B pede a versão nightly: veja a receita do vLLM
+~/venv-vllm/bin/vllm --version
+```
+
 ## Converter PDFs em imagens
 
 ```bash
@@ -52,14 +61,16 @@ O servidor do modelo (vLLM / llama.cpp / Ollama) roda à parte; o script só fal
 
 ## Teste em 2 minutos, sem GPU
 
+O `--db teste.sqlite` mantém o teste num banco separado, sem misturar com o `pipeline.sqlite` dos PDFs reais.
+
 ```bash
 python teste_local.py gerar-pdf --saida teste.pdf          # PDF sintético com as armadilhas
 python teste_local.py servidor-mock --gabarito teste.gabarito.json --porta 8000 &
-python pdf_pipeline.py triagem teste.pdf
-python pdf_pipeline.py vlm --url http://localhost:8000/v1 --selecao todas
-python pdf_pipeline.py validar --hip vlm:mock-ocr
-python pdf_pipeline.py revisar --hip vlm:mock-ocr --somente-sinalizadas   # abre revisao_vlm_mock_ocr.html
-python pdf_pipeline.py exportar --saida corpus
+python pdf_pipeline.py --db teste.sqlite triagem teste.pdf
+python pdf_pipeline.py --db teste.sqlite vlm --url http://localhost:8000/v1 --selecao todas
+python pdf_pipeline.py --db teste.sqlite validar --hip vlm:mock-ocr
+python pdf_pipeline.py --db teste.sqlite revisar --hip vlm:mock-ocr --somente-sinalizadas   # gera revisao_vlm_mock_ocr.html
+python pdf_pipeline.py --db teste.sqlite exportar --saida corpus_teste
 ```
 
 O servidor falso injeta erros de propósito (HTTP 500, laço de repetição, omissão de parágrafo,
@@ -76,11 +87,13 @@ derrube o servidor e rode o mesmo comando de novo.
 2. **Gabarito**: `python pdf_pipeline.py amostra --n 40` gera PNG + TXT de páginas sorteadas por
    estrato; a equipe corrige os TXT seguindo `amostra/LEIA-ME.txt` e importa:
    `python pdf_pipeline.py importar --fonte gabarito --dir amostra`.
-3. **Experimento** (escolha do método): rode cada candidato só nas páginas do gabarito e compare.
+3. **Experimento** (escolha do modelo): rode cada candidato só nas páginas do gabarito, valide e compare
+   tudo numa tabela. O plano completo (candidatos, critérios, rodadas) está em [EXPERIMENTO.md](EXPERIMENTO.md).
    ```bash
    python pdf_pipeline.py vlm --paginas amostra/paginas.txt --url http://localhost:8000/v1
    python pdf_pipeline.py validar --hip vlm:<modelo> --ref gabarito
    python pdf_pipeline.py validar --hip nativo --ref gabarito
+   python pdf_pipeline.py comparar            # todas as fontes validadas, páginas vlm+misto
    ```
 4. **Produção**: `python pdf_pipeline.py vlm` (padrão: só páginas `vlm` + `misto`), depois
    `validar --hip vlm:<modelo>` (contra o nativo), `revisar --somente-sinalizadas` e
@@ -89,51 +102,90 @@ derrube o servidor e rode o mesmo comando de novo.
 
 ## Subindo o modelo
 
-Confira as flags na página/receita do modelo para a versão instalada (mudam com frequência).
+Máquina: **RTX A5500 (24 GB, Ampere)** com vLLM, no ambiente separado (`~/venv-vllm`). Os flags mudam com
+frequência: confira a [receita do vLLM para o Gemma 4](https://docs.vllm.ai/projects/recipes/en/stable/Google/Gemma4.html)
+para a versão instalada. Sempre com `--host 127.0.0.1`: o vLLM, por padrão, aceita conexões de qualquer
+endereço, e o cliente roda na mesma máquina.
 
-**RTX A5500 (24 GB, Ampere)** — vLLM:
+**Gemma 4 (principal).** Qual tamanho usar é decidido no [EXPERIMENTO.md](EXPERIMENTO.md):
 ```bash
-# OCR especializado, 0,9B (Apache 2.0). Use o prompt do próprio modelo:
-vllm serve PaddlePaddle/PaddleOCR-VL-1.6 --trust-remote-code \
+# E4B em BF16: cabe com folga
+vllm serve google/gemma-4-E4B-it --served-model-name gemma4-e4b --host 127.0.0.1 \
+     --max-model-len 16384 --gpu-memory-utilization 0.90 \
+     --limit-mm-per-prompt '{"image": 1}' \
+     --mm-processor-kwargs '{"max_soft_tokens": 1120}' \
+     --reasoning-parser gemma4
+
+# 12B quantizado em 4 bits (precisa do vLLM nightly): troque só o checkpoint e o nome
+vllm serve google/gemma-4-12B-it-qat-w4a16-ct --served-model-name gemma4-12b ...   # mesmos flags
+
+# 31B quantizado: ~18 GB só de pesos, pouca sobra para o KV cache. Se não subir, reduza o contexto.
+vllm serve google/gemma-4-31B-it-qat-w4a16-ct --served-model-name gemma4-31b ... --max-model-len 8192
+
+# cliente: usa o prompt padrão em português do script
+python pdf_pipeline.py vlm
+```
+O que cada flag faz:
+- `max_soft_tokens`: a Gemma reduz cada imagem a um orçamento de tokens visuais (70 a 1120; padrão 280).
+  Para OCR, use o máximo.
+- `--reasoning-parser gemma4`: o raciocínio já vem desligado. Se algum pensamento vier mesmo assim, ele vai
+  para um campo separado e não entra no texto.
+- `--limit-mm-per-prompt`: o pipeline manda uma imagem por requisição; reservar memória para mais é desperdício.
+
+O 26B A4B não entra: não tem checkpoint de 4 bits oficial, e o int8 da receita (~26 GB) não cabe em 24 GB.
+
+**OCR especializado** (referências do experimento). Use o prompt do próprio modelo:
+```bash
+# PaddleOCR-VL, 0,9B (Apache 2.0)
+vllm serve PaddlePaddle/PaddleOCR-VL-1.6 --served-model-name paddleocr-vl --host 127.0.0.1 --trust-remote-code \
      --max-num-batched-tokens 16384 --no-enable-prefix-caching --mm-processor-cache-gb 0
 python pdf_pipeline.py vlm --prompt "OCR:" --concorrencia 16
 
-# OCR especializado, 0,9B (MIT):
-vllm serve zai-org/GLM-OCR --served-model-name glm-ocr --port 8000
+# GLM-OCR, 0,9B (MIT)
+vllm serve zai-org/GLM-OCR --served-model-name glm-ocr --host 127.0.0.1 --port 8000
 python pdf_pipeline.py vlm --prompt "Text Recognition:" --concorrencia 16
-
-# VLM generalista (segue o prompt em português do script): ex. Qwen3.5 pequeno ou Gemma 4 12B
-# quantizado. Se o modelo tiver modo de "raciocínio", desligue:
-python pdf_pipeline.py vlm --extra-json '{"chat_template_kwargs": {"enable_thinking": false}}'
 ```
 Observação: PaddleOCR-VL e GLM-OCR foram feitos para rodar depois de um detector de layout
 (recortes de região). Mandar a página inteira funciona, mas compare com o pipeline oficial deles
 (`paddleocr doc_parser` / SDK do GLM-OCR) no experimento — dá para importar a saída deles com
 `importar --jsonl` e validar do mesmo jeito.
 
-**Titan V (12 GB, Volta, sm_70)** — o vLLM atual exige compute capability 7.5+ e o PyTorch só
-mantém a Volta nos builds CUDA 12.6 (até a versão 2.14). Use llama.cpp (compilado com CUDA 12.x) e GGUF:
-```bash
-llama-server -m PaddleOCR-VL-1.6.gguf --mmproj PaddleOCR-VL-1.6-mmproj.gguf \
-             --temp 0 --parallel 4 -c 32768 --port 8000
-python pdf_pipeline.py vlm --url http://localhost:8000/v1 --prompt "OCR:" --concorrencia 4
-```
-
 ## Parâmetros que mais importam no `vlm`
 
 | opção | padrão | quando mexer |
 |---|---|---|
 | `--concorrencia` | 8 | Suba até as págs/min pararem de crescer (o log do vLLM mostra o uso do KV cache). |
-| `--lado-px` | 1600 | Maior lado da imagem. Ajuste ao modelo (olmOCR usa 1288); letra miúda pede mais. |
+| `--lado-px` | 1600 | Maior lado da imagem. Na Gemma 4, quem manda é o `max_soft_tokens` do servidor; nos de OCR, letra miúda pede mais. |
 | `--max-tokens` | 4096 | Se truncar, o retry dobra até `--max-tokens-teto`. |
 | `--ancora` | off | Junta o texto nativo ao prompt como referência (ajuda em números; não use no experimento "VLM puro"). |
 | `--temp-max-gpu` | off | Ex.: 83 → pausa os envios acima de 83 °C (precisa de nvidia-ml-py, na máquina da GPU). |
 | `--espera-servidor` | 1800 | Quanto tempo esperar o servidor voltar antes de encerrar (o progresso fica salvo). |
 
+## Rodando por SSH (VS Code)
+
+1. **Conecte:** no VS Code, *Remote-SSH: Connect to Host* e abra a pasta do projeto na máquina remota. O
+   terminal integrado já roda lá.
+2. **Copie os PDFs** do seu computador para `pdfs/` na máquina. O `rsync` retoma se a conexão cair:
+   ```bash
+   rsync -avP pasta_local_dos_pdfs/ usuario@maquina:~/pdf-pipeline/pdfs/
+   ```
+3. **Use o `tmux` para tudo que é longo.** Os terminais do VS Code morrem quando a janela fecha ou a rede cai,
+   e levam junto o `vllm serve` e o `vlm`. Dentro do `tmux`, os processos continuam rodando:
+   ```bash
+   tmux new -s pdf          # cria a sessão (na próxima vez: tmux attach -t pdf)
+   # Ctrl+b c  → nova janela    Ctrl+b 0/1/2 → troca de janela    Ctrl+b d → sai sem matar nada
+   ```
+   Sugestão: janela 0 com o `vllm serve`, janela 1 com o `vlm` e janela 2 com `watch -n 5 nvidia-smi`.
+4. **Imagens e HTML:** os PNG do `amostra/` abrem direto no editor do VS Code. O HTML do `revisar` já traz as
+   imagens embutidas: clique com o botão direito nele no Explorer, escolha *Download* e abra no seu navegador.
+
 ## Rodando sem babá
 
 - Use `tmux` (ou `nohup`) para a sessão SSH não matar o processo.
-- Limite de potência evita superaquecimento melhor que pausa: `sudo nvidia-smi -pl 180`.
+- Limite de potência (opcional, pede `sudo`): `sudo nvidia-smi -pl 180`. A A5500 é uma placa de workstation
+  feita para rodar sem parar e reduz o clock sozinha se esquentar; só limite se o `nvidia-smi` mostrar
+  temperatura acima de ~85 °C por muito tempo. Sem `sudo`, use `--temp-max-gpu 83` no `vlm`. O limite volta
+  ao padrão quando a máquina reinicia.
 - Rode o servidor do modelo como serviço (`systemd` com `Restart=always` ou Docker com
   `--restart unless-stopped`) e o cliente num laço que só para quando termina ou quando você pede:
   ```bash
