@@ -29,6 +29,25 @@ python pdf_pipeline.py amostra --n 40
   tende a aceitar o que ele escreveu, e o gabarito passa a favorecer esse modelo.
 - Importe: `python pdf_pipeline.py importar --fonte gabarito --dir amostra`
 
+## 1.5 Teste de fumaça (enquanto a equipe corrige o gabarito)
+
+Antes de gastar horas de GPU, confira se o servidor, os flags e o cliente funcionam com PDFs reais. Use a
+E4B (a mais leve) em ~10 páginas `vlm`/`misto` que **não** estão no gabarito, numa fonte só para isso:
+
+```bash
+# janela 0 do tmux: o vllm serve da E4B (seção 3)
+# janela 1:
+python pdf_pipeline.py vlm --excluir amostra/paginas.txt --limite 10 --fonte vlm:fumaca-e4b
+python pdf_pipeline.py mostrar --fonte vlm:fumaca-e4b --n 10
+```
+
+- **Por que fora do gabarito:** quem corrige uma página não deve ter visto a saída do modelo nela.
+- **Por que outra fonte:** `vlm:fumaca-e4b` não se mistura com `vlm:gemma4-e4b` do experimento.
+- **O que conferir:** nenhum papo, cerca ```` ``` ```` ou tag de raciocínio no texto (se a checagem `meta_texto`
+  pegar, a página aparece `sinalizada`); números iguais aos da imagem; tabelas com ` | `; a velocidade (`pág/min`
+  no log). Se algo sistemático aparecer, ajuste o `pos_processar` ou o prompt antes do experimento.
+- Para ver uma página lado a lado com a imagem: `python pdf_pipeline.py revisar --hip vlm:fumaca-e4b --ref nativo`.
+
 ## 2. Candidatos
 
 **Rodada 1: modelos.** Todos em condições iguais: prompt do próprio modelo, temperatura 0, `--lado-px 1600`,
@@ -73,8 +92,8 @@ python pdf_pipeline.py validar --hip vlm:gemma4-e4b --ref gabarito
 ```
 
 - `--served-model-name` define o nome curto que vira a fonte no banco.
-- **Na primeira vez com cada modelo**, veja uma saída crua antes de seguir:
-  `sqlite3 pipeline.sqlite "select texto from saidas where fonte='vlm:gemma4-e4b' limit 1"`.
+- **Na primeira vez com cada modelo**, veja uma saída antes de seguir:
+  `python pdf_pipeline.py mostrar --fonte vlm:gemma4-e4b --n 1`.
   Se aparecer alguma tag de raciocínio ou um preâmbulo ("Aqui está a transcrição..."), pare e ajuste o
   `pos_processar` antes de continuar.
 - Para os modelos de OCR, troque o checkpoint e o nome e passe o prompt deles no cliente
@@ -92,8 +111,8 @@ python pdf_pipeline.py comparar --categorias todas                     # visão 
 
 O `comparar` lê o que cada `validar` gravou e ordena as fontes pela precisão p5. Critérios, nesta ordem:
 
-1. **Eliminatório:** laços de repetição, caracteres chineses ou páginas truncadas que as tentativas extras não
-   resolvem (coluna `sinal.` e o detalhe no CSV do `validar`).
+1. **Eliminatório:** laços de repetição, caracteres chineses, papo do modelo (`meta_texto`) ou páginas truncadas
+   que as tentativas extras não resolvem (coluna `sinal.` e o detalhe no CSV do `validar`).
 2. **Precisão p5:** a precisão nas piores páginas. Texto inventado entra direto na whitelist e libera respostas
    fora do domínio. É o erro mais caro.
 3. **Recall p5:** o que o modelo deixa de fora nas piores páginas. Vocabulário perdido é cobertura perdida.

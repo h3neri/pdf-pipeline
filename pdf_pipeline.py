@@ -22,6 +22,7 @@ Subcomandos (rode cada um com -h para ver as opções):
             rodapé repetidos, hifenização), confere se nenhuma página faltou e
             grava um .txt por documento + corpus.jsonl + manifesto.json.
   status    Resumo do andamento (pode rodar em paralelo com o `vlm`).
+  mostrar   Imprime no terminal o texto gravado de uma fonte (conferir as primeiras saídas).
 
 Fluxo típico:
   python pdf_pipeline.py triagem pdfs/
@@ -102,6 +103,24 @@ RE_HIFEN = re.compile(r"(?<!\w)([^\W\d_]{2,})-\n?([^\W\d_]{2,})(?!\w)")
 RE_PREAMBULO = re.compile(  # "Aqui está a transcrição da página:" (só se falar de transcrição/texto)
     r"^\s*(aqui est[áa]|seguem?|claro|certo|abaixo|here is|here's|sure|certainly|below is)\b[^\n]{0,100}"
     r"\b(transcri\w*|texto|conte[úu]do|p[áa]gina|markdown|text|content|page)\b[^\n]{0,60}:\s*$", re.I)
+# "Papo" do modelo com o usuário, que não é texto do documento ("Como um modelo de linguagem...",
+# "Aqui está o texto extraído:", "Espero ter ajudado!"). Só é procurado no começo e no fim da resposta
+# (META_JANELA), onde esse papo aparece, para não acusar um documento que fale de IA no meio da página.
+# Um falso positivo só custa uma nova tentativa e deixa a página sinalizada para revisão; um falso
+# negativo põe texto fora do domínio na whitelist. Por isso a lista prefere pegar demais a pegar de menos.
+RE_META = re.compile(
+    r"\b(?:sou|como)\s+(?:um|uma)\s+(?:modelo\s+de\s+linguagem|ia|intelig[êe]ncia\s+artificial|assistente\s+de\s+ia)\b"
+    r"|\bas\s+an?\s+(?:ai|language\s+model)\b|\bi'?\s*a?m\s+an?\s+(?:ai|language\s+model)\b"
+    r"|\bn[ãa]o\s+(?:consigo|posso|sou\s+capaz\s+de|tenho\s+(?:a\s+)?capacidade\s+de)\s+"
+    r"(?:ver|visualizar|enxergar|processar|ler|criar|gerar|retornar|acessar|abrir)\s+(?:\S+\s+){0,3}?"
+    r"(?:imagens?|arquivos?|fotos?|anexos?)\b"
+    r"|\bi\s+(?:can(?:no|')t|am\s+unable\s+to)\s+(?:see|view|process|read|open)\b"
+    r"|\baqui\s+est[áa]\s+(?:a|o)\s+(?:transcri|texto)|\bsegue[m]?\s+(?:a|o)\s+(?:transcri|texto)"
+    r"|\btexto\s+extra[íi]do\b|\bhere(?:\s+is|'s)\s+the\s+(?:transcription|text|extracted)"
+    r"|\bespero\s+(?:ter\s+ajudado|que\s+(?:isso\s+|isto\s+)?(?:ajude|seja\s+[úu]til))"
+    r"|\b(?:copiar|colar)\s+(?:esse|este|o)\s+texto\b",
+    re.I)
+META_JANELA = 600  # caracteres do começo e do fim da resposta onde o papo é procurado
 LIGADURAS = {"ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl", "ﬅ": "st", "ﬆ": "st"}
 INVISIVEIS = dict.fromkeys(map(ord, "\u00ad\u200b\u200c\u200d\u2060\ufeff"), None)
 STOP = set("""de a o que e do da em um para é com não uma os no se na por mais as dos como mas foi ao
@@ -657,7 +676,14 @@ def tem_repeticao(t: str) -> bool:
     return len(b) > 800 and len(b) / len(zlib.compress(b)) > 4.0
 
 
-def problemas_sem_referencia(texto: str, fim: str | None) -> list[str]:
+def tem_meta_texto(t: str) -> bool:
+    """O modelo conversou em vez de só transcrever? (o `pos_processar` já tirou os casos simples)"""
+    if "```" in t:  # sobrou cerca de código: a resposta tinha texto antes ou depois da cerca
+        return True
+    return bool(RE_META.search(t[:META_JANELA]) or RE_META.search(t[-META_JANELA:]))
+
+
+def problemas_sem_referencia(texto: str, fim: str | None, meta: bool = True) -> list[str]:
     p = []
     if fim == "length":
         p.append("truncado")
@@ -667,6 +693,8 @@ def problemas_sem_referencia(texto: str, fim: str | None) -> list[str]:
         p.append("cjk")
     if tem_repeticao(texto):
         p.append("repeticao")
+    if meta and tem_meta_texto(texto):  # meta=False para o texto nativo, que não tem "papo" de modelo
+        p.append("meta_texto")
     return p
 
 
@@ -886,6 +914,11 @@ def selecionar_pendentes(con, a, fonte: str) -> list[dict]:
             sql += f" AND p.doc_id IN ({','.join('?' * len(ids))})"
             params += ids
         rows = con.execute(sql + " ORDER BY p.doc_id, p.pagina", params).fetchall()
+    if a.excluir:  # ex.: teste de fumaça fora das páginas do gabarito, para não enviesar a correção
+        fora = {l.strip() for l in Path(a.excluir).read_text(encoding="utf-8").splitlines() if ":" in l}
+        antes = len(rows)
+        rows = [r for r in rows if f"{r['doc_id']}:{r['pagina']}" not in fora]
+        log(f"--excluir: {antes - len(rows)} página(s) de {a.excluir} ficaram de fora")
     feitos = {(r[0], r[1]): r[2] for r in
               con.execute("SELECT doc_id, pagina, status FROM saidas WHERE fonte=?", (fonte,))}
     pend = []
@@ -1174,7 +1207,7 @@ def cmd_validar(a) -> int:
         if m["nums_extras"]:
             s.append("numero_extra")
         if k in hips:
-            s += [p for p in problemas_sem_referencia(hip_bruto, None)
+            s += [p for p in problemas_sem_referencia(hip_bruto, None, meta=a.hip not in ("nativo", "gabarito"))
                   if p != "vazio" or hip_bruto.strip() != SENTINELA_VAZIA]
         sinalizadas += bool(s)
         con.execute("INSERT OR REPLACE INTO validacao VALUES (?,?,?,?,?,?,?)",
@@ -1489,6 +1522,45 @@ def cmd_status(a) -> int:
     return 0
 
 
+def cmd_mostrar(a) -> int:
+    """Imprime o texto que ficou gravado (já pós-processado), para conferir as primeiras saídas de um
+    modelo sem precisar do `sqlite3` instalado no servidor."""
+    con = abrir_db(a.db)
+    fontes = [r[0] for r in con.execute("SELECT DISTINCT fonte FROM saidas ORDER BY fonte")]
+    if not a.fonte or a.fonte not in fontes:
+        if a.fonte:
+            log(f"A fonte '{a.fonte}' não tem saídas.")
+        print("Fontes no banco: " + (", ".join(fontes) or "nenhuma"))
+        return 1
+    sql = ("SELECT s.doc_id, s.pagina, s.status, s.tentativas, s.problemas, s.erro, s.meta, s.texto, p.categoria "
+           "FROM saidas s LEFT JOIN paginas p ON p.doc_id = s.doc_id AND p.pagina = s.pagina WHERE s.fonte=?")
+    params: list = [a.fonte]
+    if a.pagina:
+        d, pg = a.pagina.rsplit(":", 1)
+        sql += " AND s.doc_id=? AND s.pagina=?"
+        params += [d, int(pg)]
+    if a.somente_sinalizadas:
+        sql += " AND s.status != 'ok'"
+    rows = con.execute(sql + " ORDER BY s.doc_id, s.pagina LIMIT ?", params + [a.n]).fetchall()
+    if not rows:
+        log("Nenhuma página com esse filtro.")
+        return 1
+    for r in rows:
+        meta = json.loads(r["meta"] or "{}")
+        print("=" * 80)
+        print(f"{r['doc_id']}:{r['pagina']}  categoria={r['categoria']}  status={r['status']}  "
+              f"tentativas={r['tentativas']}  {meta.get('segundos', '?')} s  problemas={r['problemas'] or '[]'}")
+        if r["erro"]:
+            print(f"erro: {r['erro']}")
+        print("-" * 80)
+        t = r["texto"] or ""
+        if a.max_chars and len(t) > a.max_chars:
+            t = t[: a.max_chars] + f"\n[... mais {len(t) - a.max_chars} caracteres; use --max-chars 0]"
+        print(t)
+    print("=" * 80)
+    return 0
+
+
 # ====================================================================== CLI
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1527,6 +1599,7 @@ def main(argv=None) -> int:
                    help="precisa = vlm+misto (padrão); vlm = só as sem texto utilizável; todas = tudo")
     v.add_argument("--paginas", help="arquivo com 'doc_id:pagina' por linha (ex.: amostra/paginas.txt)")
     v.add_argument("--docs", help="restringe a estes doc_id (separados por vírgula)")
+    v.add_argument("--excluir", help="arquivo 'doc_id:pagina' com páginas a pular (ex.: amostra/paginas.txt)")
     v.add_argument("--limite", type=int, help="processa no máximo N páginas (teste)")
     v.add_argument("--concorrencia", type=int, default=8, help="requisições simultâneas (padrão: %(default)s)")
     v.add_argument("--procs-render", type=int, default=2, help="processos que renderizam páginas")
@@ -1589,10 +1662,17 @@ def main(argv=None) -> int:
 
     sub.add_parser("status", help="resumo do andamento")
 
+    m = sub.add_parser("mostrar", help="mostra no terminal o texto gravado de uma fonte (conferir saídas)")
+    m.add_argument("--fonte", help="fonte (ex.: vlm:gemma4-e4b); sem ela, lista as fontes do banco")
+    m.add_argument("--pagina", help="só esta página, no formato doc_id:pagina")
+    m.add_argument("--n", type=int, default=3, help="quantas páginas mostrar (padrão: %(default)s)")
+    m.add_argument("--somente-sinalizadas", action="store_true", help="só páginas sinalizadas ou com erro")
+    m.add_argument("--max-chars", type=int, default=2000, help="corta textos longos (0 = inteiro)")
+
     a = ap.parse_args(argv)
     return {"triagem": cmd_triagem, "amostra": cmd_amostra, "vlm": cmd_vlm, "importar": cmd_importar,
             "validar": cmd_validar, "comparar": cmd_comparar, "revisar": cmd_revisar, "exportar": cmd_exportar,
-            "status": cmd_status}[a.cmd](a)
+            "status": cmd_status, "mostrar": cmd_mostrar}[a.cmd](a)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@
 
 ## Arquivos
 - `pdf_pipeline.py`: o pipeline inteiro, com os subcomandos `triagem`, `amostra`, `vlm`, `importar`,
-  `validar`, `comparar`, `revisar`, `exportar` e `status`. Todo o estado fica em `pipeline.sqlite`.
+  `validar`, `comparar`, `revisar`, `exportar`, `status` e `mostrar`. Todo o estado fica em `pipeline.sqlite`.
 - `teste_local.py`: `gerar-pdf` cria um PDF sintético de 14 páginas com armadilhas, mais o gabarito.
   `servidor-mock` é um servidor falso, compatível com OpenAI, que injeta erros de propósito.
 - `pdf_to_image/pdf_para_imagens.py`: conversor independente de PDF para PNG/JPG, usado para inspeção.
@@ -39,7 +39,10 @@
 5. **Validação:**
    - recall/precisão de tokens e CER/WER;
    - comparação dos números da página, que pega trocas como R$ 500,00 → 5.000,00;
-   - checagens sem referência: saída truncada, vazia, com caracteres chineses ou em laço de repetição;
+   - checagens sem referência: saída truncada, vazia, com caracteres chineses, em laço de repetição ou com
+     "papo" do modelo (`meta_texto`: cerca ```` ``` ```` que sobrou, "Como um modelo de linguagem...", "texto
+     extraído"; só no começo e no fim da resposta). Elas valem também nas páginas `vlm`, que não têm referência.
+     Um falso positivo só custa outra tentativa e deixa a página sinalizada; não se apaga o papo automaticamente;
    - gabarito de ~40 páginas estratificadas, corrigidas à mão (`amostra` → `importar --fonte gabarito`);
    - `comparar` junta numa tabela a validação de todas as fontes, ordenada pela precisão p5.
 6. **`exportar` falha com código 1** se alguma página ficar sem texto aceitável, a menos que se use `--permitir-faltantes`.
@@ -47,14 +50,22 @@
 ## Situação atual
 - **Feito e testado sem GPU**, com o `servidor-mock`: o pipeline inteiro, inclusive a retomada após
   SIGTERM, SIGKILL e queda do servidor, e o `comparar`.
-- **Ainda não testado:** PDFs reais, Gemma 4 e os outros modelos reais, prompts por modelo, pausa por
+- **Primeiro contato com a Gemma 4 E4B (nov/2026)**, pelo `transformers` num chat interativo (`chat.py`, fora
+  do repositório), numa página com texto nativo: 3 palavras trocadas em ~500 (ex.: "diligência nas" →
+  "diligência às"), números certos. Com um pedido em tom de conversa, a resposta veio com papo ("Como um modelo
+  de linguagem...") e cerca ```` ```txt ````, e o pipeline aceitava isso como `ok`: daí a checagem `meta_texto`.
+  Esse chat serve só para explorar; os números do experimento saem do vLLM + `vlm` (prompt, temperatura 0 e
+  `max_soft_tokens` controlados).
+- **Ainda não testado:** PDFs reais, Gemma 4 e os outros modelos pelo vLLM, prompts por modelo, pausa por
   temperatura da GPU e o script de comparação com o Docling que está no README.
 - **Próximos passos** (detalhes em `EXPERIMENTO.md`):
-  1. Preparar a A5500: `setup.sh`, um ambiente separado para o vLLM e copiar os PDFs para `pdfs/`.
+  1. Preparar a A5500: `setup.sh`, teste sem GPU, um ambiente separado para o vLLM e copiar os PDFs para `pdfs/`.
   2. `triagem pdfs/` e depois `status`, para saber quantas páginas são `vlm` ou `misto`.
-  3. `amostra --n 40`, corrigir o gabarito e importar.
-  4. Rodar os candidatos nas páginas do gabarito, `validar` cada um e decidir com `comparar`.
-  5. Rodar a produção com o vencedor e depois `exportar`.
+  3. `amostra --n 40`; a equipe começa a corrigir o gabarito.
+  4. Enquanto isso, teste de fumaça com a E4B fora das páginas do gabarito
+     (`vlm --excluir amostra/paginas.txt --limite 10 --fonte vlm:fumaca-e4b`, depois `mostrar`).
+  5. Importar o gabarito, rodar os candidatos nas páginas dele, `validar` cada um e decidir com `comparar`.
+  6. Rodar a produção com o vencedor e depois `exportar`.
 
 ## Hardware e acesso
 - **NVIDIA RTX A5500, 24 GB** (Ampere, sm_86, tem BF16), numa máquina Ubuntu. O vLLM roda direto.
@@ -100,8 +111,10 @@
   python pdf_pipeline.py --db teste.sqlite triagem teste.pdf
   python pdf_pipeline.py --db teste.sqlite vlm --url http://localhost:8000/v1 --selecao todas
   python pdf_pipeline.py --db teste.sqlite validar --hip vlm:mock-ocr --ref nativo
+  python pdf_pipeline.py --db teste.sqlite mostrar --fonte vlm:mock-ocr --pagina teste:9
   ```
-  Resultado esperado: no `vlm`, as tentativas extras corrigem a 3 e a 14 (`sinalizadas=0`). Na validação,
+  Resultado esperado: no `vlm`, as tentativas extras corrigem a 3, a 9 (papo + cerca, `meta_texto`) e a 14
+  (`sinalizadas=0`; o `mostrar` da 9 dá `tentativas=2` ou mais, e texto limpo). Na validação,
   a 12 aparece com `omissao`, a 13 com o número trocado (500,00 → 5.000,00) e a 8 (`misto`) com `adicao`,
   o que é normal ali, porque o VLM lê o texto da imagem.
 - **PyMuPDF:** índices de página começam em 0. Renderize com processos (não threads) e abra o PDF dentro

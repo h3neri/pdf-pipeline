@@ -17,8 +17,10 @@ teste_local.py — testa o pipeline SEM GPU e SEM os PDFs reais.
        python teste_local.py servidor-mock --gabarito teste.gabarito.json --porta 8000
    Ele "transcreve" devolvendo o gabarito, mas injeta falhas para exercitar o
    pipeline: erros HTTP 500 aleatórios, laço de repetição (pág. 3, 1ª tentativa),
-   cercas ```markdown (pág. 4), frase introdutória (pág. 8), omissão de linha
+   cercas ```markdown (pág. 4), frase introdutória (pág. 8), "papo" de modelo
+   generalista com cerca ```txt no meio (pág. 9, 1ª tentativa), omissão de linha
    (pág. 12), número trocado (pág. 13) e caracteres chineses (pág. 14, 1ª tentativa).
+   "1ª tentativa" = 1ª resposta sem HTTP 500, para o teste não depender da sorte.
 
 Dependências: pymupdf (só para gerar o PDF). O servidor usa apenas a biblioteca padrão.
 """
@@ -245,12 +247,12 @@ class Handler(BaseHTTPRequestHandler):
         pag = chave.rsplit(":", 1)[-1]
         if pag not in Mock.gabarito and pag.isdigit():  # PDF maior que o gabarito: repete em ciclo
             pag = str((int(pag) - 1) % len(Mock.gabarito) + 1)
-        with Mock.trava:
-            Mock.tentativas[chave] = Mock.tentativas.get(chave, 0) + 1
-            tent = Mock.tentativas[chave]
         time.sleep(random.uniform(*Mock.lat))
         if random.random() < Mock.p_erro:
             return self._json(500, {"error": "falha simulada"})
+        with Mock.trava:  # conta só respostas válidas: o HTTP 500 aleatório não "gasta" a falha injetada
+            Mock.tentativas[chave] = Mock.tentativas.get(chave, 0) + 1
+            tent = Mock.tentativas[chave]
 
         linhas = Mock.gabarito.get(pag)
         fim = "stop"
@@ -274,6 +276,10 @@ class Handler(BaseHTTPRequestHandler):
                 texto = "```markdown\n" + texto + "\n```"
             if pag == "8":
                 texto = "Aqui está a transcrição da página:\n\n" + texto
+            if pag == "9" and tent == 1:         # papo de generalista (visto na Gemma 4 E4B, nov/2026)
+                texto = ("Como um modelo de linguagem, não consigo criar arquivos, mas posso transcrever o "
+                         "texto da imagem.\n\nSe for o caso, aqui está o texto extraído:\n\n```txt\n"
+                         + texto + "\n```\n\nEspero ter ajudado!")
         mx = corpo.get("max_tokens") or 4096
         return self._json(200, {
             "id": f"mock-{chave}-{tent}", "object": "chat.completion", "model": Mock.modelo,
