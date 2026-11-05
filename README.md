@@ -91,8 +91,9 @@ derrube o servidor e rode o mesmo comando de novo.
    Enquanto a equipe corrige, faça um **teste de fumaça** com o modelo em páginas que *não* estão no
    gabarito, para conferir o servidor, os flags e as primeiras saídas sem enviesar quem corrige:
    ```bash
-   python pdf_pipeline.py vlm --excluir amostra/paginas.txt --limite 10 --fonte vlm:fumaca-e4b
-   python pdf_pipeline.py mostrar --fonte vlm:fumaca-e4b --n 10
+   python pdf_pipeline.py amostra --n 12 --saida fumaca --excluir amostra/paginas.txt
+   python pdf_pipeline.py vlm --paginas fumaca/paginas.txt --fonte vlm:fumaca-e4b
+   python pdf_pipeline.py mostrar --fonte vlm:fumaca-e4b --n 12
    ```
 3. **Experimento** (escolha do modelo): rode cada candidato só nas páginas do gabarito, valide e compare
    tudo numa tabela. O plano completo (candidatos, critérios, rodadas) está em [EXPERIMENTO.md](EXPERIMENTO.md).
@@ -165,7 +166,7 @@ Observação: PaddleOCR-VL e GLM-OCR foram feitos para rodar depois de um detect
 | `--lado-px` | 1600 | Maior lado da imagem. Na Gemma 4, quem manda é o `max_soft_tokens` do servidor; nos de OCR, letra miúda pede mais. |
 | `--max-tokens` | 4096 | Se truncar, o retry dobra até `--max-tokens-teto`. |
 | `--ancora` | off | Junta o texto nativo ao prompt como referência (ajuda em números; não use no experimento "VLM puro"). |
-| `--excluir` | — | Arquivo `doc_id:pagina` com páginas a pular (ex.: teste de fumaça fora do gabarito). |
+| `--excluir` | — | Arquivo `doc_id:pagina` com páginas a pular (ex.: teste de fumaça fora do gabarito). O `amostra` também aceita. |
 | `--fonte` | `vlm:<modelo>` | Nome no banco. Use um diferente para cada configuração ou teste, senão as páginas são puladas como "já feitas". |
 | `--temp-max-gpu` | off | Ex.: 83 → pausa os envios acima de 83 °C (precisa de nvidia-ml-py, na máquina da GPU). |
 | `--espera-servidor` | 1800 | Quanto tempo esperar o servidor voltar antes de encerrar (o progresso fica salvo). |

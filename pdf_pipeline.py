@@ -604,6 +604,11 @@ def cmd_amostra(a) -> int:
     if not rows:
         log("Nada triado ainda.")
         return 1
+    if a.excluir:  # ex.: páginas de teste de fumaça que não podem cair no gabarito (ou vice-versa)
+        fora = {l.strip() for l in Path(a.excluir).read_text(encoding="utf-8").splitlines() if ":" in l}
+        antes = len(rows)
+        rows = [r for r in rows if f"{r['doc_id']}:{r['pagina']}" not in fora]
+        log(f"--excluir: {antes - len(rows)} página(s) de {a.excluir} ficaram de fora do sorteio")
     rnd = random.Random(a.seed)
     grupos = defaultdict(list)
     for r in rows:  # estratos: categoria x tem-lixo x documento
@@ -1588,6 +1593,8 @@ def main(argv=None) -> int:
     s.add_argument("--saida", default="amostra")
     s.add_argument("--lado-px", type=int, default=1600)
     s.add_argument("--sobrescrever", action="store_true", help="reescreve .txt já existentes (cuidado!)")
+    s.add_argument("--excluir", help="arquivo 'doc_id:pagina' com páginas que não podem ser sorteadas "
+                                     "(ex.: amostra/paginas.txt, para um teste de fumaça fora do gabarito)")
 
     v = sub.add_parser("vlm", help="transcreve páginas com um VLM local (assíncrono, com checkpoint)")
     v.add_argument("--url", default="http://localhost:8000/v1", help="base da API compatível com OpenAI")

@@ -15,6 +15,7 @@ imagens/
 *.sqlite-shm
 *.jsonl
 amostra/
+fumaca/
 corpus/
 corpus_teste/
 revisao_*.html

@@ -37,8 +37,10 @@ E4B (a mais leve) em ~10 páginas `vlm`/`misto` que **não** estão no gabarito,
 ```bash
 # janela 0 do tmux: o vllm serve da E4B (seção 3)
 # janela 1:
-python pdf_pipeline.py vlm --excluir amostra/paginas.txt --limite 10 --fonte vlm:fumaca-e4b
-python pdf_pipeline.py mostrar --fonte vlm:fumaca-e4b --n 10
+python pdf_pipeline.py amostra --n 12 --saida fumaca --excluir amostra/paginas.txt   # sorteio fora do gabarito
+python pdf_pipeline.py vlm --paginas fumaca/paginas.txt --fonte vlm:fumaca-e4b
+python pdf_pipeline.py mostrar --fonte vlm:fumaca-e4b --n 12
+python pdf_pipeline.py validar --hip vlm:fumaca-e4b --ref nativo   # nas páginas ok/misto, o nativo já serve de régua
 ```
 
 - **Por que fora do gabarito:** quem corrige uma página não deve ter visto a saída do modelo nela.
@@ -71,6 +73,7 @@ configuração seu próprio `--fonte`, senão o checkpoint pula as páginas como
 | variação | fonte de exemplo | o que responde |
 |---|---|---|
 | `max_soft_tokens` 560 em vez de 1120 | `vlm:gemma4-12b-560` | perde letra miúda? quanto ganha de velocidade? |
+| `--lado-px 1920` e `2339` (200 DPI) em vez de 1600 | `vlm:gemma4-12b-1920` | com 1120 tokens a Gemma vê ~1344×1920 px: a 1600 ela amplia a imagem; a 2339 ela reduz. Desenhar já em 1920 deixa a letra mais nítida? |
 | `--ancora` | `vlm:gemma4-12b-ancora` | o texto nativo ajuda nos números ou faz o modelo copiar os erros dele? |
 | outro prompt (`--prompt-arquivo`) | `vlm:gemma4-12b-p2` | só se a rodada 1 mostrar um erro sistemático (ex.: tabelas) |
 

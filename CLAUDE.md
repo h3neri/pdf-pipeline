@@ -5,10 +5,12 @@
 - Objetivo desta parte: transformar PDFs públicos em `.txt` limpo. Esse texto vira a base de uma **whitelist**
   que restringe as respostas do chatbot ao domínio do banco. O material do Bacen entra para enriquecer o
   dataset com termos técnicos de finanças.
-- Documentos atuais (6 PDFs, **2.322 páginas, 674,2 MB** no total): `documentos_assets_1.pdf`,
-  `documentos_assets_2.pdf`, `documentos_assets_3.pdf`, `documentos_bacen.pdf`, `glossario_cidadania.pdf` e
-  `regulamentos.pdf`. Os PDFs antigos (`Bradesco_Assets.pdf`, `Bradesco_Seguros.pdf`) saíram do projeto.
-  Uns 290 KB por página é bastante, o que pode indicar muitas imagens ou páginas escaneadas: a triagem dirá.
+- Documentos atuais (6 PDFs em `pdf_to_image/`, **2.322 páginas, 196 MB** no total): `documentos assets 1.pdf`,
+  `documentos assets 2.pdf`, `documentos assets 3.pdf` (slides 16:9), `documentos bacen.pdf`,
+  `glossario_cidadania_financeira.pdf` e `regulamentos.pdf`. No banco, os `doc_id` ficam sem espaço:
+  `documentos_assets_1`, ..., `glossario_cidadania_financeira`, `regulamentos`. Os PDFs antigos
+  (`Bradesco_Assets.pdf`, `Bradesco_Seguros.pdf`) saíram do projeto. Os de "assets" e o `regulamentos` são
+  vários PDFs juntados (pdf-lib) e repetem páginas entre si: ~290 páginas são cópias idênticas de outras.
 - A tentativa anterior (PDF → CSV) quebrava a formatação e mantinha lixo, como os `xxxxx` de campos de assinatura.
 - Quem mantém o projeto é o Henry, estudante de Engenharia de Computação que está aprendendo Python e PyMuPDF.
   Fale em português e explique o porquê de cada mudança de forma didática.
@@ -56,14 +58,29 @@
   de linguagem...") e cerca ```` ```txt ````, e o pipeline aceitava isso como `ok`: daí a checagem `meta_texto`.
   Esse chat serve só para explorar; os números do experimento saem do vLLM + `vlm` (prompt, temperatura 0 e
   `max_soft_tokens` controlados).
-- **Ainda não testado:** PDFs reais, Gemma 4 e os outros modelos pelo vLLM, prompts por modelo, pausa por
+- **Triagem dos PDFs reais (5/nov/2026, 21 s, só CPU):** `ok` 2.126, `misto` 188, `vlm` 2, `vazia` 6.
+  Nenhuma página com codificação quebrada. Medição fora do pipeline (OCR tesseract; contagens em
+  `experimento/texto_em_imagem.csv`): das 188 `misto`, 127 só têm fundo decorativo ou foto, 48 têm umas
+  poucas palavras (logotipo, título) e 13 têm texto de verdade na imagem (prints de sistema, telas de app);
+  mais 3 `ok` do `documentos_assets_2` têm texto em imagem pequena. Das 2 `vlm`, só a capa da cartilha
+  (bacen:33) precisa do modelo. Cabeçalho/rodapé aprendidos e lixo detectado conferidos: estão certos.
+- **Texto nativo:** em 42 páginas `ok` sorteadas (17.940 palavras), um OCR que só vê os pixels concorda com o
+  nativo em 98,8% das palavras, e nas diferenças o erro de letra foi sempre do OCR. Os defeitos do nativo são
+  de espaço, não de caractere, e têm conserto determinístico: palavras grudadas (~33 págs. do Bacen; o
+  espaço entre palavras é 0,137 × o tamanho da fonte e o MuPDF não o vê), ligadura partida ("fi nanceira",
+  ~42 págs.) e letras espaçadas em títulos ("I m p o r t a n t e", ~35 págs.).
+- **Atenção:** o `exportar` usa o texto do VLM no lugar do nativo em toda página `misto`; nas 127 sem texto na
+  imagem, isso troca texto exato por uma releitura. Decidir a regra antes da produção.
+- **Ainda não testado:** Gemma 4 e os outros modelos pelo vLLM, prompts por modelo, pausa por
   temperatura da GPU e o script de comparação com o Docling que está no README.
 - **Próximos passos** (detalhes em `EXPERIMENTO.md`):
-  1. Preparar a A5500: `setup.sh`, teste sem GPU, um ambiente separado para o vLLM e copiar os PDFs para `pdfs/`.
-  2. `triagem pdfs/` e depois `status`, para saber quantas páginas são `vlm` ou `misto`.
-  3. `amostra --n 40`; a equipe começa a corrigir o gabarito.
+  1. Preparar a A5500: `setup.sh`, teste sem GPU, um ambiente separado para o vLLM e copiar os PDFs.
+  2. ~~`triagem` e `status`~~ (feito; numa máquina nova, `triagem pdf_to_image/` só atualiza os caminhos).
+  3. **Em decisão:** com ~16 páginas de texto em imagem, se o experimento de 5 modelos ainda compensa
+     (seção 0 do `EXPERIMENTO.md`). Depois, `amostra --n 40`; a equipe começa a corrigir o gabarito.
   4. Enquanto isso, teste de fumaça com a E4B fora das páginas do gabarito
-     (`vlm --excluir amostra/paginas.txt --limite 10 --fonte vlm:fumaca-e4b`, depois `mostrar`).
+     (`amostra --n 12 --saida fumaca --excluir amostra/paginas.txt`, depois
+     `vlm --paginas fumaca/paginas.txt --fonte vlm:fumaca-e4b` e `mostrar`).
   5. Importar o gabarito, rodar os candidatos nas páginas dele, `validar` cada um e decidir com `comparar`.
   6. Rodar a produção com o vencedor e depois `exportar`.
 

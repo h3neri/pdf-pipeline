@@ -1,0 +1,48 @@
+pagina_teste,tipo,tipo_auto,documento,pagina_original,largura,altura,n_palavras,cobertura_img,n_tabelas,n_desenhos,n_numeros,n_links,n_campos,n_pontilhado
+1,texto_em_imagem,texto_em_imagem,documentos bacen.pdf,156,596,842,155,0.309,0,0,2,0,0,0
+2,formulario_ou_campos,formulario_ou_campos,documentos assets 1.pdf,4,613,793,293,0.005,1,208,27,0,3,2
+3,formulario_ou_campos,formulario_ou_campos,documentos bacen.pdf,450,595,842,360,0.0,1,449,27,0,8,0
+4,numeros_e_valores,numeros_e_valores,regulamentos.pdf,178,595,842,613,0.0,0,1,10,0,0,0
+5,tabela,tabela,documentos assets 1.pdf,23,613,793,128,0.061,1,174,25,0,0,0
+6,links_urls,links_urls,documentos assets 1.pdf,80,595,842,259,0.038,0,28,5,4,0,0
+7,capa_ou_divisor,capa_ou_divisor,documentos assets 1.pdf,316,595,842,36,0.63,0,2,2,0,0,0
+8,texto_em_imagem,texto_em_imagem,documentos assets 2.pdf,305,595,852,61,0.056,0,1,0,0,0,0
+9,slide,slide,documentos assets 3.pdf,1,1920,1080,46,1.0,0,14,0,0,0,0
+10,slide,slide,documentos assets 2.pdf,319,1920,1080,47,1.0,0,2,0,0,0,0
+11,texto_em_imagem,texto_em_imagem,documentos bacen.pdf,99,596,842,90,0.402,0,0,5,0,0,0
+12,numeros_e_valores,numeros_e_valores,documentos assets 3.pdf,674,595,842,610,0.005,0,0,8,0,0,0
+13,numeros_e_valores,numeros_e_valores,documentos bacen.pdf,205,595,842,806,0.0,0,0,69,0,0,0
+14,design_com_fundo,design_com_fundo,documentos assets 3.pdf,38,420,595,204,0.566,0,2,1,0,0,0
+15,texto_corrido,texto_corrido,documentos assets 3.pdf,529,420,624,355,0.0,0,2,17,0,0,0
+16,tabela_densa,tabela_densa,documentos bacen.pdf,422,595,842,270,0.0,1,619,122,0,0,0
+17,texto_em_imagem,texto_em_imagem,documentos assets 2.pdf,326,1920,1080,39,1.0,0,31,1,0,0,0
+18,texto_corrido,texto_corrido,documentos bacen.pdf,432,595,842,574,0.0,0,1,34,0,0,0
+19,defeito_do_nativo,defeito_do_nativo,documentos bacen.pdf,2,595,842,302,0.0,0,4,2,0,0,0
+20,tabela,tabela,documentos assets 3.pdf,756,612,792,302,0.0,2,106,17,0,0,0
+21,defeito_do_nativo,defeito_do_nativo,documentos assets 1.pdf,301,540,780,176,0.384,0,85,2,0,0,0
+22,numeros_e_valores,numeros_e_valores,documentos assets 2.pdf,191,420,624,271,0.0,0,3,26,0,0,0
+23,capa_ou_divisor,capa_ou_divisor,documentos bacen.pdf,540,595,842,3,0.0,0,120,0,0,0,0
+24,design_com_fundo,design_com_fundo,documentos assets 2.pdf,3,595,842,48,0.515,0,2,3,0,0,0
+25,texto_em_imagem,texto_em_imagem,documentos assets 3.pdf,27,1920,1080,38,1.0,0,31,1,0,0,0
+26,links_urls,links_urls,documentos assets 2.pdf,17,420,624,348,0.0,0,1,4,1,0,0
+27,formulario_ou_campos,formulario_ou_campos,documentos bacen.pdf,469,595,842,202,0.0,5,195,29,0,4,1
+28,design_com_fundo,design_com_fundo,documentos bacen.pdf,547,595,842,297,1.0,0,0,3,0,0,0
+29,slide,slide,documentos assets 3.pdf,12,1920,1080,50,1.0,0,13,2,0,0,0
+30,duas_colunas,duas_colunas,documentos bacen.pdf,287,595,842,471,0.0,2,92,45,0,0,0
+31,tabela,tabela,documentos bacen.pdf,329,595,842,299,0.0,1,262,12,0,0,0
+32,texto_em_imagem,texto_em_imagem,documentos assets 1.pdf,253,595,842,157,0.333,0,29,12,0,0,0
+33,em_branco,em_branco,documentos bacen.pdf,40,595,842,0,0.0,0,16,0,0,0,0
+34,tabela,tabela,regulamentos.pdf,169,595,842,406,0.0,1,46,13,0,0,0
+35,sumario_pontilhado,sumario_pontilhado,glossario_cidadania_financeira.pdf,8,595,842,77,0.0,0,0,41,0,0,20
+36,tabela_densa,tabela_densa,documentos bacen.pdf,406,595,842,439,0.0,1,1009,192,0,0,0
+37,slide,slide,documentos assets 3.pdf,21,1920,1080,58,1.0,0,32,3,0,0,0
+38,links_urls,links_urls,regulamentos.pdf,163,595,842,181,0.0,0,6,3,5,0,0
+39,capa_ou_divisor,capa_ou_divisor,glossario_cidadania_financeira.pdf,72,595,842,0,0.0,0,31,0,12,0,0
+40,texto_corrido,texto_corrido,glossario_cidadania_financeira.pdf,18,595,842,369,0.0,0,6,1,0,0,0
+41,sumario_pontilhado,sumario_pontilhado,glossario_cidadania_financeira.pdf,2,595,842,108,0.0,0,0,55,0,0,27
+42,defeito_do_nativo,defeito_do_nativo,documentos assets 1.pdf,71,540,780,392,0.74,0,6,7,0,0,0
+43,defeito_do_nativo,defeito_do_nativo,documentos bacen.pdf,14,595,842,193,0.0,0,7,3,0,0,0
+44,fluxograma,duas_colunas,documentos assets 1.pdf,309,540,780,263,0.347,0,83,4,0,0,0
+45,tabela,tabela,documentos assets 2.pdf,313,612,792,331,0.0,1,352,36,0,0,0
+46,texto_corrido,texto_corrido,regulamentos.pdf,186,595,842,453,0.0,0,0,11,0,0,0
+47,tabela,design_com_fundo,documentos assets 1.pdf,15,613,793,192,0.636,1,165,31,0,2,0
