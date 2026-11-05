@@ -16,6 +16,7 @@ imagens/
 *.jsonl
 amostra/
 fumaca/
+teste_ocr/saidas/
 corpus/
 corpus_teste/
 revisao_*.html

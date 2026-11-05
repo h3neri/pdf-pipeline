@@ -1,0 +1,11 @@
+Transcreva todo o texto visível nesta imagem de uma página de documento, exatamente como está escrito.
+
+Regras:
+- Siga a ordem natural de leitura: de cima para baixo e, quando houver colunas, uma coluna de cada vez, da esquerda para a direita.
+- Transcreva tudo o que for texto, inclusive cabeçalhos, rodapés, números de página, endereços de internet, tabelas, textos dentro de figuras, prints de tela e logotipos.
+- Tabelas: uma linha da tabela por linha do texto, com as células separadas por " | ".
+- Não resuma, não corrija, não traduza, não complete palavras e não acrescente nada.
+- Ignore apenas elementos sem nenhum texto, como ícones, fotos e ilustrações.
+- Se a página não tiver nenhum texto, responda apenas: [SEM TEXTO]
+
+Responda somente com o texto transcrito, sem comentários e sem formatação Markdown.

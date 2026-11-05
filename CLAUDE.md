@@ -23,8 +23,25 @@
 - `pdf_to_image/pdf_para_imagens.py`: conversor independente de PDF para PNG/JPG, usado para inspeção.
 - `README.md`: instalação, fluxo completo, como subir os modelos, SSH, parâmetros e limitações.
 - `EXPERIMENTO.md`: plano do teste que escolhe o modelo (candidatos, gabarito, critérios de decisão).
+- `teste_ocr/`: **fase atual**, independente do pipeline (veja abaixo e `teste_ocr/LEIA-ME.md`).
 
-## Decisões de arquitetura (não mudar sem discutir)
+## Fase atual: teste bruto imagem → txt (desde 5/nov/2026)
+- Decisão do Henry: **não usar o `pdf_pipeline.py` nem a abordagem híbrida agora**. Primeiro medir a qualidade
+  bruta da transcrição, comparando vários métodos na mesma amostra: extração direta do PDF, Gemma 4 lendo
+  a imagem e PaddleOCR-VL-1.6. Depois, possivelmente, reorganizar o pipeline com uma abordagem múltipla
+  (o tempo de GPU não importa; importa o melhor resultado).
+- **Sem limpeza nesta fase:** tabelas, URLs, cabeçalhos e números de página são mantidos; só elementos sem
+  texto (ícones, fotos) podem ser ignorados. A limpeza é decidida depois, com base nos resultados.
+- `teste_ocr/montar_pdf_teste.py` monta `amostra_teste.pdf` (47 páginas, 15 tipos, sem repetidas, semente
+  2026; `manifesto.csv` liga cada página à origem). As imagens saem do nosso `pdf_para_imagens.py`
+  (`--lado-px 1920`). `teste_ocr/transcrever.py` (`nativo`, `vlm`, `resumo`) grava um txt por página em
+  `teste_ocr/saidas/<modelo>__<prompt>/`, sem alterar a resposta; os sinais vão só para o log.
+- Prompts em `teste_ocr/prompts/`: `gemma_fiel.txt` (transcrição fiel, tabelas com ` | `, `[SEM TEXTO]`
+  para página vazia) e `paddleocr_ocr.txt` (`OCR:`). Servidor: vLLM na A5500; começar pela E4B, depois o
+  maior Gemma 4 que couber.
+- Testado sem GPU com servidor falso: retomada após Ctrl+C, `kill -9` e queda do servidor.
+
+## Decisões de arquitetura do pipeline (não mudar sem discutir)
 1. **Híbrido.** O texto nativo do PyMuPDF é usado onde ele é bom. O VLM só recebe as páginas que a triagem
    marca como `vlm` (sem camada de texto, texto ilegível) ou `misto` (imagem grande). Isso evita
    alucinação e custo de GPU nas páginas nativas. Com um generalista como a Gemma, que tende a "corrigir"
