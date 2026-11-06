@@ -24,6 +24,8 @@
 - `README.md`: instalação, fluxo completo, como subir os modelos, SSH, parâmetros e limitações.
 - `EXPERIMENTO.md`: plano do teste que escolhe o modelo (candidatos, gabarito, critérios de decisão).
 - `teste_ocr/`: **fase atual**, independente do pipeline (veja abaixo e `teste_ocr/LEIA-ME.md`).
+- `experimento/resultados_teste_ocr.md`: resultados, análise e conclusões do teste bruto (5–6/nov/2026), com
+  `teste_ocr_metricas.csv` (só números) e `teste_ocr_mapa.png`.
 
 ## Fase atual: teste bruto imagem → txt (desde 5/nov/2026)
 - Decisão do Henry: **não usar o `pdf_pipeline.py` nem a abordagem híbrida agora**. Primeiro medir a qualidade
@@ -40,6 +42,24 @@
   para página vazia) e `paddleocr_ocr.txt` (`OCR:`). Servidor: vLLM na A5500; começar pela E4B, depois o
   maior Gemma 4 que couber.
 - Testado sem GPU com servidor falso: retomada após Ctrl+C, `kill -9` e queda do servidor.
+- `teste_ocr/comparar.py` compara as saídas com o nativo (cobertura, precisão e números por página, em três
+  grupos: `completo`, `imagem`, `defeito`) e confere `teste_ocr/armadilhas.csv` (14 trechos verificados na
+  imagem ampliada, onde algum método errou). Só biblioteca padrão; roda em qualquer máquina com `saidas/`.
+- **Rodadas feitas (5–6/nov, vLLM 0.33.0 na A5500):** E4B, 12B e PaddleOCR-VL-1.6 nas 47 páginas; 31B só em
+  7 páginas dirigidas (limite de hardware). Rodada completa do 31B (40 páginas restantes) pendente: o comando
+  está no LEIA-ME, e a pasta é `saidas/gemma4-31b-ctx2700__gemma_fiel`. Resultados em `experimento/resultados_teste_ocr.md`.
+- **Conclusões até aqui:**
+  - Nenhum método domina. Os Gemma erram de forma fluente e invisível: trocam palavras por outras plausíveis
+    ("excetuadas"→"executadas"), normalizam nomes e números ("RenovAgro"→"RenovaAgro", "250,000"→"250.000")
+    e "corrigem" o original. A 12B inventou um aviso ilegível. O Paddle é literal no impresso nítido, mas
+    erra acentos e letras, perde a estrutura das tabelas e não lê prints de tela com a página inteira.
+  - O tamanho reduz os erros fluentes. Nas 14 armadilhas: E4B 0, 12B 6, Paddle 11 e 31B 9 (+4 depois do
+    corte de contexto).
+  - A 12B entrou em laço em 3 páginas com pontuação repetida (tracejado, `____`, sumário pontilhado), o
+    Paddle em 1 e a E4B em nenhuma.
+  - Todas as armadilhas estão em páginas com camada de texto, onde o nativo acerta: isso reforça o híbrido.
+    Os modelos só acrescentam em texto dentro de imagem (~17 páginas reais na produção).
+  - Votar entre modelos da mesma família não funciona: E4B e 12B erram as mesmas palavras.
 
 ## Decisões de arquitetura do pipeline (não mudar sem discutir)
 1. **Híbrido.** O texto nativo do PyMuPDF é usado onde ele é bom. O VLM só recebe as páginas que a triagem
@@ -87,35 +107,60 @@
   espaço entre palavras é 0,137 × o tamanho da fonte e o MuPDF não o vê), ligadura partida ("fi nanceira",
   ~42 págs.) e letras espaçadas em títulos ("I m p o r t a n t e", ~35 págs.).
 - **Atenção:** o `exportar` usa o texto do VLM no lugar do nativo em toda página `misto`; nas 127 sem texto na
-  imagem, isso troca texto exato por uma releitura. Decidir a regra antes da produção.
-- **Ainda não testado:** Gemma 4 e os outros modelos pelo vLLM, prompts por modelo, pausa por
-  temperatura da GPU e o script de comparação com o Docling que está no README.
-- **Próximos passos** (detalhes em `EXPERIMENTO.md`):
-  1. Preparar a A5500: `setup.sh`, teste sem GPU, um ambiente separado para o vLLM e copiar os PDFs.
-  2. ~~`triagem` e `status`~~ (feito; numa máquina nova, `triagem pdf_to_image/` só atualiza os caminhos).
-  3. **Em decisão:** com ~16 páginas de texto em imagem, se o experimento de 5 modelos ainda compensa
-     (seção 0 do `EXPERIMENTO.md`). Depois, `amostra --n 40`; a equipe começa a corrigir o gabarito.
-  4. Enquanto isso, teste de fumaça com a E4B fora das páginas do gabarito
-     (`amostra --n 12 --saida fumaca --excluir amostra/paginas.txt`, depois
-     `vlm --paginas fumaca/paginas.txt --fonte vlm:fumaca-e4b` e `mostrar`).
-  5. Importar o gabarito, rodar os candidatos nas páginas dele, `validar` cada um e decidir com `comparar`.
-  6. Rodar a produção com o vencedor e depois `exportar`.
+  imagem, isso troca texto exato por uma releitura. O teste bruto confirmou o risco: os modelos erram
+  justamente onde o nativo acerta. **Proposta:** manter o nativo como base e acrescentar só o texto da imagem
+  (linhas do modelo que não existem no nativo), e só nas páginas com texto real em imagem.
+- **Testado em 5–6/nov (teste bruto, fora do pipeline):** Gemma 4 E4B/12B/31B e PaddleOCR-VL-1.6 pelo vLLM
+  na A5500. **Ainda não testado:** o subcomando `vlm` do pipeline com modelo real, prompts alternativos,
+  pausa por temperatura da GPU, pipeline oficial do Paddle (layout + recortes) e o script do Docling.
+- **Próximos passos:**
+  1. Terminar a rodada completa do 31B, rodar `teste_ocr/comparar.py` e atualizar
+     `experimento/resultados_teste_ocr.md` (seções 5, 7 e 10).
+  2. Decidir e implementar a regra de mescla das páginas `misto` (acima).
+  3. Escolher o modelo para as ~17 páginas com texto em imagem: o 31B, se a rodada completa não mostrar laços
+     nem invenção; senão, a E4B. Marcar para revisão humana as páginas onde Gemma e Paddle discordam.
+  4. Gabarito humano focado nessas ~17 páginas, e não em 40 estratificadas (seção 0 do `EXPERIMENTO.md`:
+     com poucas páginas, o experimento de 5 modelos não compensa).
+  5. Testar o pipeline oficial do Paddle (`paddleocr doc_parser`) nas páginas de prints de tela.
+  6. Produção: nativo + consertos determinísticos de espaço; modelo só nas páginas escolhidas; `exportar`.
 
 ## Hardware e acesso
-- **NVIDIA RTX A5500, 24 GB** (Ampere, sm_86, tem BF16), numa máquina Ubuntu. O vLLM roda direto.
+- **NVIDIA RTX A5500, 24 GB** (Ampere, sm_86, tem BF16; 24.564 MiB no `nvidia-smi`), na máquina Ubuntu
+  **compartilhada "chineque"** (usuário `g38885519865`, **sem sudo**). Driver 580, CUDA 13.0. Em 06/11 a GPU
+  estava livre (1 MiB usado), mas é compartilhada: pare o servidor (Ctrl+C) ao terminar.
+- **Porta 8000 ocupada** por outro serviço da máquina: use `--port 8011` no `vllm serve` e, no cliente,
+  sempre `--url http://127.0.0.1:8011/v1 --modelo <nome>` (o padrão do `transcrever.py` é a 8000; com
+  `--modelo`, um servidor errado responde 404 em vez de transcrever com o modelo de outra pessoa).
+- Clone do repositório na chineque: `~/teste/pdf-pipeline` (com `.venv`). vLLM **0.33.0** em `~/venv-vllm`.
+- **Sem CUDA toolkit (`nvcc`)**: a FlashInfer não compila kernels, e o amostrador top-k/top-p dela derruba a
+  partida em `determine_available_memory` → `_dummy_sampler_run` ("Could not find nvcc"). Solução: prefixe o
+  `vllm serve` com `VLLM_USE_FLASHINFER_SAMPLER=0` (com temperatura 0 o top-k/top-p nem é usado). Alternativa
+  não testada: `~/venv-vllm/bin/vllm download-kernels`. `gcc` e `Python.h` existem (o Triton funciona).
+- "Engine core initialization failed" é só a mensagem final do processo da API. A causa está no traceback do
+  `EngineCore`: `grep -n "EngineCore" log | grep -v " INFO " | tail -n 40`. Rode sempre com `2>&1 | tee log`
+  e com o comando **numa linha só** (o `\` de várias linhas quebra ao colar).
 - Acesso por **SSH pelo VS Code** (Remote-SSH). Processos longos (`vllm serve`, `vlm`) rodam sempre dentro do
   `tmux`, porque os terminais do VS Code morrem quando a conexão cai.
 - O vLLM fica num ambiente virtual **separado** do `.venv` do pipeline (ele fixa versões próprias de PyTorch);
   os dois só conversam por HTTP. Suba-o com `--host 127.0.0.1`: o cliente roda na mesma máquina.
-- `sudo nvidia-smi -pl` (limite de potência) é opcional; só use se a GPU passar muito tempo acima de ~85 °C.
+- `sudo nvidia-smi -pl` (limite de potência) não está disponível na chineque (sem sudo); use
+  `--temp-max-gpu` no `vlm` se a GPU passar muito tempo acima de ~85 °C.
 
 ## Modelos
-- **Gemma 4 (principal).** Tamanho e quantização são escolhidos no experimento. Na A5500:
-  - `google/gemma-4-E4B-it` em BF16 — cabe com folga;
-  - `google/gemma-4-12B-it-qat-w4a16-ct` (4 bits, treinado com quantização) — precisa do vLLM nightly ou da
-    imagem Docker `vllm/vllm-openai:gemma4-unified` (receita do vLLM, nov/2026);
-  - `google/gemma-4-31B-it-qat-w4a16-ct` — uns 18 GB só de pesos, pouca sobra para KV cache; pode não subir.
+- **Gemma 4 (principal).** Na A5500 (medido em 06/11, vLLM 0.33.0; comandos em `teste_ocr/LEIA-ME.md`):
+  - `google/gemma-4-E4B-it` em BF16: 4,5B "efetivos", mas **8B com embeddings → 14,5 GiB de pesos**. Sobe com
+    `--gpu-memory-utilization 0.90`, `--max-num-seqs 4`, `--max-num-batched-tokens 4096`, `--enforce-eager` e
+    `--limit-mm-per-prompt '{"image": 1, "audio": 0}'` (o `"audio": 0` evita alocar o codificador de áudio).
+    Sobram 6,2 GiB de KV cache (~38 KB/token). Não "cabe com folga".
+  - `google/gemma-4-12B-it-qat-w4a16-ct` (4 bits, QAT): **subiu no vLLM 0.33.0 estável** (não precisa de
+    nightly). 8,3 GiB de pesos, 12,3 GiB de KV cache (~196 KB/token). Ocupa menos que a E4B em BF16.
+  - `google/gemma-4-31B-it-qat-w4a16-ct`: arquivo de **23,3 GB**; ocupa ~19 GiB na GPU e o KV cache custa
+    ~860 KB/token. `--cpu-offload-gb` **não reduz** a memória da GPU com pesos W4A16 (19,0 GiB com 6 GB fora,
+    19,2 com 10). Contexto máximo ≈ 2.700 tokens (`--gpu-memory-utilization 0.95 --max-model-len 2700
+    --max-num-seqs 1`; cliente `--max-tokens 1300 --concorrencia 1`): as páginas com resposta longa são cortadas.
   - Fora: **26B A4B**, que não tem checkpoint W4A16 oficial; o int8 da receita (~26 GB) não cabe.
+  - Com a imagem em 1120 tokens, o prompt fica em ~1,3 mil tokens. A maior resposta legítima da amostra teve
+    2.297 tokens (tabela densa); passar de ~3 mil é quase sempre laço de repetição.
   - Usa o prompt padrão em português do script.
   - **Imagem:** a Gemma reduz cada imagem a um orçamento de tokens visuais (70, 140, 280, 560 ou 1120; padrão
     280). Para OCR use 1120: `--mm-processor-kwargs '{"max_soft_tokens": 1120}'` no `vllm serve`. Por isso o
@@ -124,7 +169,8 @@
     se algum pensamento vier, ele vá para o campo `reasoning` e não para o texto. O `pos_processar` só remove
     `<think>...</think>`: confira as primeiras saídas reais e, se sobrar tag de raciocínio, ajuste a regex.
 - **Referências do experimento** (OCR especializado, 0,9B; rodam na A5500 com vLLM):
-  - **PaddleOCR-VL-1.6** (Apache 2.0): `--prompt "OCR:"`.
+  - **PaddleOCR-VL-1.6** (Apache 2.0): `--prompt "OCR:"`. 1,8 GiB de pesos, ~5 s por página. Literal no
+    impresso, mas erra acentos e não lê prints de tela com a página inteira (reduz a ~1 MP).
   - **GLM-OCR** (MIT): `--prompt "Text Recognition:"`.
   - Eles foram feitos para receber recortes de um detector de layout. Mandar a página inteira funciona, mas
     dá para comparar com o pipeline oficial (`paddleocr doc_parser ...`) trazendo a saída com `importar --jsonl`.

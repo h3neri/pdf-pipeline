@@ -14,6 +14,12 @@ Depois da `triagem pdfs/`, rode `status` e some as colunas `vlm` + `misto`.
   revise tudo com `revisar` e siga em frente.
 - **Centenas ou mais:** faça o experimento completo abaixo.
 
+> **Situação em 06/11/2026.** A triagem real deu ~17 páginas com texto de verdade em imagem (até ~65,
+> contando logotipos e títulos), ou seja, poucas. O teste bruto (`experimento/resultados_teste_ocr.md`) já
+> comparou E4B, 12B, 31B e PaddleOCR-VL. Ele mostrou que os modelos erram justamente onde o nativo acerta, e
+> que só acrescentam em texto dentro de imagem. Recomendação: em vez do experimento completo abaixo, um
+> gabarito focado nessas ~17 páginas. As seções seguintes ficam como referência.
+
 ## 1. Gabarito (o padrão-ouro)
 
 ```bash
@@ -57,15 +63,17 @@ sem `--ancora`, mesma `--concorrencia` (8). Concorrência igual deixa os tempos 
 
 | fonte (nome no banco) | checkpoint | por que testar |
 |---|---|---|
-| `vlm:gemma4-e4b` | `google/gemma-4-E4B-it` (BF16) | menor e mais rápido; cabe com folga |
-| `vlm:gemma4-12b` | `google/gemma-4-12B-it-qat-w4a16-ct` | meio-termo; precisa do vLLM nightly |
-| `vlm:gemma4-31b` | `google/gemma-4-31B-it-qat-w4a16-ct` | teto de qualidade; apertado em 24 GB |
+| `vlm:gemma4-e4b` | `google/gemma-4-E4B-it` (BF16) | menor e mais rápido; 14,5 GiB de pesos (sobe com os flags enxutos do README) |
+| `vlm:gemma4-12b` | `google/gemma-4-12B-it-qat-w4a16-ct` | meio-termo; 8,3 GiB de pesos; funciona no vLLM estável (0.33.0) |
+| `vlm:gemma4-31b` | `google/gemma-4-31B-it-qat-w4a16-ct` | teto de qualidade; arquivo de 23,3 GB, contexto máximo ~2.700 tokens na A5500 |
 | `vlm:paddleocr-vl` | `PaddlePaddle/PaddleOCR-VL-1.6` | OCR especializado, referência |
 | `vlm:glm-ocr` | `zai-org/GLM-OCR` | OCR especializado, referência |
 | `nativo` | texto do PyMuPDF | mostra quanto se ganha usando VLM |
 
 - O **26B A4B** fica fora: não há checkpoint de 4 bits oficial, e o int8 da receita (~26 GB) não cabe.
-- Se o **31B** não subir nem com `--max-model-len 8192`, ele sai do experimento. Isso já é um resultado.
+- O **31B** não sobe nem com `--max-model-len 8192` (06/11): o KV cache custa ~860 KB por token, e o
+  `--cpu-offload-gb` não libera a GPU com pesos W4A16. Só roda com contexto de ~2.700 tokens, o que corta as
+  páginas com resposta longa. Serve para páginas curtas, como as de prints de tela.
 
 **Rodada 2: ajustes**, só nos 1 ou 2 melhores da rodada 1. Mude uma coisa de cada vez e dê a cada
 configuração seu próprio `--fonte`, senão o checkpoint pula as páginas como "já feitas".

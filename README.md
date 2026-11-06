@@ -115,30 +115,34 @@ frequência: confira a [receita do vLLM para o Gemma 4](https://docs.vllm.ai/pro
 para a versão instalada. Sempre com `--host 127.0.0.1`: o vLLM, por padrão, aceita conexões de qualquer
 endereço, e o cliente roda na mesma máquina.
 
-**Gemma 4 (principal).** Qual tamanho usar é decidido no [EXPERIMENTO.md](EXPERIMENTO.md):
+**Gemma 4 (principal).** Comandos testados em 06/11/2026 na A5500 da máquina "chineque", com vLLM 0.33.0.
+Na chineque, a porta 8000 está ocupada (use 8011) e não há `nvcc`, daí o `VLLM_USE_FLASHINFER_SAMPLER=0`.
+Detalhes e números em `teste_ocr/LEIA-ME.md` e `experimento/resultados_teste_ocr.md`.
 ```bash
-# E4B em BF16: cabe com folga
-vllm serve google/gemma-4-E4B-it --served-model-name gemma4-e4b --host 127.0.0.1 \
-     --max-model-len 16384 --gpu-memory-utilization 0.90 \
-     --limit-mm-per-prompt '{"image": 1}' \
-     --mm-processor-kwargs '{"max_soft_tokens": 1120}' \
-     --reasoning-parser gemma4
+# E4B em BF16: 14,5 GiB de pesos (8B parâmetros com embeddings). Com estes flags sobram 6,2 GiB de KV cache.
+VLLM_USE_FLASHINFER_SAMPLER=0 vllm serve google/gemma-4-E4B-it --served-model-name gemma4-e4b --host 127.0.0.1 --port 8011 --gpu-memory-utilization 0.90 --max-model-len 16384 --max-num-seqs 4 --max-num-batched-tokens 4096 --enforce-eager --limit-mm-per-prompt '{"image": 1, "audio": 0}' --mm-processor-kwargs '{"max_soft_tokens": 1120}' --reasoning-parser gemma4
 
-# 12B quantizado em 4 bits (precisa do vLLM nightly): troque só o checkpoint e o nome
-vllm serve google/gemma-4-12B-it-qat-w4a16-ct --served-model-name gemma4-12b ...   # mesmos flags
+# 12B em 4 bits: 8,3 GiB de pesos; funciona no vLLM estável (0.33.0). Troque só o checkpoint e o nome
+VLLM_USE_FLASHINFER_SAMPLER=0 vllm serve google/gemma-4-12B-it-qat-w4a16-ct --served-model-name gemma4-12b ...   # mesmos flags
 
-# 31B quantizado: ~18 GB só de pesos, pouca sobra para o KV cache. Se não subir, reduza o contexto.
-vllm serve google/gemma-4-31B-it-qat-w4a16-ct --served-model-name gemma4-31b ... --max-model-len 8192
+# 31B em 4 bits: arquivo de 23,3 GB, ~19 GiB na GPU; --cpu-offload-gb não ajuda com W4A16.
+# Contexto máximo ~2.700 tokens (cliente: --max-tokens 1300, concorrência 1).
+VLLM_USE_FLASHINFER_SAMPLER=0 vllm serve google/gemma-4-31B-it-qat-w4a16-ct --served-model-name gemma4-31b --host 127.0.0.1 --port 8011 --gpu-memory-utilization 0.95 --max-model-len 2700 --max-num-seqs 1 --max-num-batched-tokens 4096 --enforce-eager --limit-mm-per-prompt '{"image": 1}' --mm-processor-kwargs '{"max_soft_tokens": 1120}' --reasoning-parser gemma4
 
 # cliente: usa o prompt padrão em português do script
-python pdf_pipeline.py vlm
+python pdf_pipeline.py vlm --url http://127.0.0.1:8011/v1
 ```
 O que cada flag faz:
 - `max_soft_tokens`: a Gemma reduz cada imagem a um orçamento de tokens visuais (70 a 1120; padrão 280).
   Para OCR, use o máximo.
 - `--reasoning-parser gemma4`: o raciocínio já vem desligado. Se algum pensamento vier mesmo assim, ele vai
   para um campo separado e não entra no texto.
-- `--limit-mm-per-prompt`: o pipeline manda uma imagem por requisição; reservar memória para mais é desperdício.
+- `--limit-mm-per-prompt '{"image": 1, "audio": 0}'`: uma imagem por requisição; o `"audio": 0` evita alocar o
+  codificador de áudio da E4B (o 31B não tem áudio).
+- `--max-num-seqs 4 --max-num-batched-tokens 4096 --enforce-eager`: reduzem o pico de memória medido na
+  partida (o amostrador é aquecido com N sequências × 262 mil tokens de vocabulário; sem CUDA graphs).
+- `VLLM_USE_FLASHINFER_SAMPLER=0`: sem o CUDA toolkit, a FlashInfer tenta compilar o amostrador e a partida cai
+  ("Could not find nvcc"). Com temperatura 0, o top-k/top-p nem é usado.
 
 O 26B A4B não entra: não tem checkpoint de 4 bits oficial, e o int8 da receita (~26 GB) não cabe em 24 GB.
 

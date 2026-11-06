@@ -1,0 +1,15 @@
+pagina,esperado,nota
+2,FOMOS AUTORIZADOS,letra miúda (~5 pt) no formulário Aviso de Crédito
+2,PF1=Guia,letra miúda; E4B e 12B leram PFI
+3,transplantio,E4B e 12B escreveram transplante
+3,julho de 2024,rodapé; o número da página 291 está impresso sobre o 4 (imagem ambígua)
+13,excetuadas,E4B e 12B escreveram executadas (sentido invertido)
+13,RenovAgro,E4B normalizou para RenovaAgro; Paddle leu RenovAgr
+13,Palmáceas,E4B e 12B escreveram Palmeáceas
+18,código 00000000000000.,código com 14 zeros; E4B escreveu 16
+20,"US$ 250,000",formato original com vírgula; E4B converteu para 250.000
+36,CRISSIUMAL,município; E4B leu Crissumal
+36,GIRUÁ,município; E4B leu Giurá
+36,RIO GRANDE DO SUL,linha Estado da tabela; E4B perdeu os nomes dos estados
+37,empresas de confiança,aviso minúsculo no print do app; 12B inventou outra frase
+37,4/20,contador minúsculo no print do app; 12B leu 4/10
